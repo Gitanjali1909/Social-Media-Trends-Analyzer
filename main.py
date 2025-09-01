@@ -1,78 +1,67 @@
-import pandas as pd
-from scripts.preprocessing import clean_text
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, confusion_matrix, f1_score
-import matplotlib.pyplot as plt
-import seaborn as sns
-import joblib
 import streamlit as st
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from scripts.preprocessing import load_and_clean_data
+from wordcloud import WordCloud
 
-dataset_choice = "reddit"
+st.set_page_config(page_title="Social Media Trends Analyzer", layout="wide")
 
-if dataset_choice == "youtube":
-    df = pd.read_csv("data/youtubecomment.csv")
-    df = df.rename(columns={"Comment": "Comment", "Sentiment": "Sentiment"})
-elif dataset_choice == "reddit":
-    df = pd.read_csv("data/Reddit_Data.csv")
-    df = df.rename(columns={"clean_comment": "Comment", "category": "Sentiment"})
-    df['Sentiment'] = df['Sentiment'].map({-1: "negative", 0: "neutral", 1: "positive"})
+df = load_and_clean_data("data/Cleaned_Viral_Social_Media_Trends.csv")
 
-df['cleaned'] = df['Comment'].apply(clean_text)
+st.markdown("<h1 style='text-align: center; color: #4A90E2;'>📊 Social Media Trends Analyzer</h1>", unsafe_allow_html=True)
+st.write("Explore trending hashtags, platforms, and engagement patterns over time — all in one place.")
 
-X = df['cleaned']
-y = df['Sentiment']
+st.sidebar.header("⚙️ Filters")
+platforms = st.sidebar.multiselect("Select Platforms", df["Platform"].unique(), default=df["Platform"].unique())
+regions = st.sidebar.multiselect("Select Regions", df["Region"].unique(), default=df["Region"].unique())
+metric = st.sidebar.radio("Engagement Metric", ["Likes", "Shares", "Comments", "Total_Engagement"])
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
-)
+df_filtered = df[df["Platform"].isin(platforms) & df["Region"].isin(regions)]
 
-vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1,2))
-X_train_tfidf = vectorizer.fit_transform(X_train)
-X_test_tfidf = vectorizer.transform(X_test)
+col1, col2 = st.columns([2,1])
 
-model = LogisticRegression(max_iter=300, class_weight="balanced")
-model.fit(X_train_tfidf, y_train)
+with col1:
+    st.subheader("📈 Top Trending Hashtags Over Time")
+    top_n = st.slider("Select number of top hashtags", 3, 10, 5)
+    top_hashtags = (
+        df_filtered.groupby("Hashtag")[metric]
+        .sum()
+        .sort_values(ascending=False)
+        .head(top_n)
+        .index
+    )
+    trend_top = (
+        df_filtered[df_filtered["Hashtag"].isin(top_hashtags)]
+        .groupby(["Month","Hashtag"])[metric]
+        .sum()
+        .reset_index()
+    )
+    fig, ax = plt.subplots(figsize=(10,5))
+    sns.lineplot(data=trend_top, x="Month", y=metric, hue="Hashtag", marker="o", ax=ax, linewidth=2.5, palette="Set2")
+    plt.title(f"Top {top_n} Hashtags Over Time ({metric})", fontsize=14, fontweight="bold")
+    ax.grid(True, alpha=0.3)
+    st.pyplot(fig, use_container_width=True)
 
-y_pred = model.predict(X_test_tfidf)
-
-print(classification_report(y_test, y_pred))
-print("Macro F1:", f1_score(y_test, y_pred, average="macro"))
-
-cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
-plt.figure(figsize=(6,4))
-sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-            xticklabels=model.classes_,
-            yticklabels=model.classes_)
-plt.xlabel("Predicted")
-plt.ylabel("Actual")
-plt.title("Confusion Matrix")
-plt.savefig("outputs/confusion_matrix.png")
-plt.close()
-
-joblib.dump(model, "models/logreg_model.pkl")
-joblib.dump(vectorizer, "models/tfidf.pkl")
-
-st.set_page_config(page_title="Social Media Sentiment Analyzer", page_icon="💬")
-st.title("💬 Social Media Sentiment Analyzer")
-st.write(f"Model trained on **{dataset_choice.upper()}** dataset")
-
-user_input = st.text_area("Enter a comment/post:")
-
-if st.button("Analyze Sentiment"):
-    if user_input.strip() == "":
-        st.warning("Please enter some text.")
+with col2:
+    st.subheader("☁️ Wordcloud of Trending Hashtags")
+    month_map = {1:"January",2:"February",3:"March",4:"April",5:"May",6:"June",7:"July",8:"August",9:"September",10:"October",11:"November",12:"December"}
+    unique_months = sorted(df["Month"].unique())
+    chosen_month = st.selectbox("Pick a Month", unique_months, format_func=lambda x: month_map.get(x, x))
+    monthly_data = df_filtered[df_filtered["Month"] == chosen_month]
+    if not monthly_data.empty:
+        wc = WordCloud(width=600, height=400, background_color="white", colormap="plasma").generate(" ".join(monthly_data["Hashtag"]))
+        st.image(wc.to_array(), use_container_width=True)
     else:
-        cleaned = clean_text(user_input)
-        vec = vectorizer.transform([cleaned])
-        prediction = model.predict(vec)[0]
-        prob = model.predict_proba(vec).max() * 100
+        st.info("No data available for this month.")
 
-        st.subheader("Prediction:")
-        if prediction == "positive":
-            st.success(f"😊 Positive ({prob:.2f}% confidence)")
-        elif prediction == "negative":
-            st.error(f"😠 Negative ({prob:.2f}% confidence)")
-        else:
-            st.info(f"😐 Neutral ({prob:.2f}% confidence)")
+st.subheader("📊 Posts per Platform")
+platform_counts = df_filtered["Platform"].value_counts().reset_index()
+platform_counts.columns = ["Platform", "Count"]
+fig, ax = plt.subplots(figsize=(8,5))
+sns.barplot(data=platform_counts, y="Platform", x="Count", palette="coolwarm", ax=ax)
+ax.bar_label(ax.containers[0], label_type="edge", fontsize=10, color="black", padding=3)
+plt.title("Posts per Platform", fontsize=14, fontweight="bold")
+plt.xlabel("Number of Posts")
+plt.ylabel("")
+st.pyplot(fig, use_container_width=True)
