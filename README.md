@@ -12,7 +12,7 @@ Focuses on EDA, trend detection, and interactive dashboards.
 - **Interactive Dashboard:** Streamlit app with filters for Platform, Region, and Metric. Includes line charts, WordClouds, and bar charts.  
 
 ## Demo
-- Notebook: [EDA_Trends](notebooks/EDA_Trends.ipynb)
+- Kaggle: [https://www.kaggle.com/code/gitanjalisoni/social-media-trend]
   
 ## Tech Stack
 Python (pandas, numpy, seaborn, matplotlib), WordCloud, Streamlit  
@@ -22,3 +22,4 @@ Python (pandas, numpy, seaborn, matplotlib), WordCloud, Streamlit
 - Filter by region and platform  
 - WordClouds for quick hashtag insights  
 - Identify engagement spikes
+
